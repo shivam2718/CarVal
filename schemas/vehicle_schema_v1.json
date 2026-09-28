@@ -1,0 +1,181 @@
+{
+  "schema_version": "1.0",
+  "vehicle_id": "CAR-0001",
+  "vehicle": {
+    "registration_number": null,
+    "vin": null,
+    "make": null,
+    "model": null,
+    "variant": null,
+    "manufacturing_year": null,
+    "registration_year": null,
+    "fuel_type": null,
+    "transmission": null,
+    "engine": {
+      "displacement_cc": null,
+      "power_bhp": null
+    },
+    "seller_claims": {
+      "claimed_mileage_km": null,
+      "accident_history": null,
+      "number_of_previous_owners": null,
+      "other_claims": []
+    }
+  },
+  "input_files": {
+    "images": [],
+    "documents": {
+      "rc": [],
+      "insurance": [],
+      "service_bills": [],
+      "other": []
+    }
+  },
+  "vision": {
+    "damage_detection": {
+      "model": null,
+      "image_results": [
+        {
+          "image_id": null,
+          "damages": [
+            {
+              "damage_id": null,
+              "type": null,
+              "confidence": null,
+              "bbox": {
+                "x1": null,
+                "y1": null,
+                "x2": null,
+                "y2": null
+              },
+              "severity": null,
+              "affected_part": null,
+              "evidence": []
+            }
+          ]
+        }
+      ]
+    },
+    "odometer": {
+      "detected": false,
+      "value_km": null,
+      "confidence": null,
+      "image_id": null,
+      "evidence": []
+    }
+  },
+  "documents": {
+    "rc": {
+      "extracted": false,
+      "fields": {},
+      "confidence": null,
+      "source_document_ids": []
+    },
+    "insurance": {
+      "extracted": false,
+      "policy_number": null,
+      "valid_from": null,
+      "valid_until": null,
+      "claims": [],
+      "confidence": null,
+      "source_document_ids": []
+    },
+    "service_history": [
+      {
+        "service_id": null,
+        "date": null,
+        "mileage_km": null,
+        "service_center": null,
+        "work_done": [],
+        "parts_replaced": [],
+        "cost": null,
+        "currency": "INR",
+        "source_document_ids": []
+      }
+    ]
+  },
+  "vehicle_history": {
+    "ownership": [],
+    "mileage_history": [],
+    "accident_history": [],
+    "service_history": []
+  },
+  "valuation": {
+    "status": "pending",
+    "features": {},
+    "predicted_fair_value": null,
+    "currency": "INR",
+    "confidence": null,
+    "model": null,
+    "model_version": null,
+    "explanation_factors": []
+  },
+  "discrepancies": [
+    {
+      "discrepancy_id": null,
+      "type": null,
+      "description": null,
+      "severity": null,
+      "status": "unverified",
+      "values_compared": [],
+      "evidence": [],
+      "confidence": null
+    }
+  ],
+  "knowledge_retrieval": {
+    "status": "pending",
+    "queries": [],
+    "vector_results": [],
+    "keyword_results": [],
+    "graph_results": [],
+    "evidence": []
+  },
+  "risk_assessment": {
+    "status": "pending",
+    "risk_flags": [],
+    "health_score": null,
+    "score_breakdown": {}
+  },
+  "llm_synthesis": {
+    "status": "pending",
+    "summary": null,
+    "key_findings": [],
+    "negotiation_points": [],
+    "inspection_checklist": [],
+    "buy_negotiate_walkaway": null,
+    "evidence": [],
+    "model": null,
+    "prompt_version": null
+  },
+  "final_report": {
+    "status": "pending",
+    "report_id": null,
+    "generated_at": null,
+    "sections": {
+      "vehicle_summary": null,
+      "damage_summary": null,
+      "document_summary": null,
+      "valuation_summary": null,
+      "discrepancy_summary": null,
+      "risk_summary": null,
+      "negotiation_summary": null
+    },
+    "evidence": []
+  },
+  "pipeline_status": {
+    "images_processed": false,
+    "documents_processed": false,
+    "vision_completed": false,
+    "document_ai_completed": false,
+    "valuation_completed": false,
+    "discrepancy_completed": false,
+    "rag_completed": false,
+    "llm_completed": false,
+    "report_completed": false
+  },
+  "metadata": {
+    "created_at": null,
+    "updated_at": null,
+    "source": "CarVal"
+  }
+}
