@@ -396,7 +396,7 @@ CarVal/
 
 1. ✅ Run all services (Document AI already running)
 2. ✅ Test via web dashboard
-3. ⏳ Member 1 creates Vision Service (damage detection)
+3. ✅ Vision Service (damage detection) built, run it from `services/vision`
 4. ⏳ Integrate Vision Service into backend
 5. ⏳ Show full flow in Review 2 demo
 
