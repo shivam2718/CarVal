@@ -61,3 +61,15 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# Vision service (Member 1): datasets, weights and training outputs
+services/vision/.venv/
+services/vision/datasets/
+services/vision/weights/*
+!services/vision/weights/README.md
+services/vision/reports/plots/
+runs/
+**/runs/
+datasets/
+*.onnx
+node_modules/
