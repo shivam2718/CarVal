@@ -7,6 +7,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import DamageViewer from '../../../components/DamageViewer'
 
 interface InspectionResult {
   vehicle_id: string
@@ -84,21 +85,25 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
             </a>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 overflow-x-auto">
-            {['overview', 'registration', 'insurance', 'service', 'raw'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 whitespace-nowrap ${
-                  activeTab === tab
-                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+        {/* Vision Results */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            📸 Damage Detection Results
+          </h2>
+          {results?.pipeline_status?.vision_completed ? (
+            <div className="text-green-600">
+              ✓ Vision analysis completed
+            </div>
+          ) : (
+            <div className="text-gray-600">
+              Waiting for vision service results...
+            </div>
+          )}
+          <div className="mt-4">
+            <DamageViewer
+              inspectionId={params.id}
+              results={results?.vision?.damage_detection?.image_results ?? []}
+            />
           </div>
         </div>
       </div>

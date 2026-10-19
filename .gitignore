@@ -61,3 +61,8 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# Virtual environments and dependencies
+.venv/
+venv/
+node_modules/
