@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-10-11T06:47:15.710302+00:00",
+  "data": "/Users/shipsy/Documents/BTP/datasets/CarDD_yolo/data.yaml",
+  "split": "test",
+  "imgsz": 640,
+  "device": "mps",
+  "classes": [
+    "dent",
+    "scratch",
+    "crack",
+    "glass",
+    "lamp",
+    "tire"
+  ],
+  "split_images": 374,
+  "split_instances": 785,
+  "models": [
+    {
+      "label": "baseline",
+      "weights": "baseline_best.pt",
+      "model_params": 3139218,
+      "overall": {
+        "precision": 0.7619610348779163,
+        "recall": 0.6421563749075586,
+        "map50": 0.7097749827584177,
+        "map50_95": 0.5491176124014061
+      },
+      "per_class": {
+        "dent": {
+          "instances": 236,
+          "precision": 0.7174432097147219,
+          "recall": 0.5254237288135594,
+          "map50": 0.5997778680683689,
+          "map50_95": 0.3442190603703393
+        },
+        "scratch": {
+          "instances": 307,
+          "precision": 0.6285676541675593,
+          "recall": 0.5276872964169381,
+          "map50": 0.5923427971625489,
+          "map50_95": 0.3345068860822388
+        },
+        "crack": {
+          "instances": 70,
+          "precision": 0.5512831023031742,
+          "recall": 0.2714285714285714,
+          "map50": 0.33973816497488973,
+          "map50_95": 0.16529257350346965
+        },
+        "glass": {
+          "instances": 71,
+          "precision": 0.9081002443545354,
+          "recall": 0.9577464788732394,
+          "map50": 0.9798229376534161,
+          "map50_95": 0.8965749333514088
+        },
+        "lamp": {
+          "instances": 69,
+          "precision": 0.8035960026085216,
+          "recall": 0.6956521739130435,
+          "map50": 0.8350856090324982,
+          "map50_95": 0.6777279709751691
+        },
+        "tire": {
+          "instances": 32,
+          "precision": 0.9627759961189848,
+          "recall": 0.875,
+          "map50": 0.9118825196587846,
+          "map50_95": 0.87638425012581
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 0.17,
+        "inference": 2.77,
+        "loss": 0.0,
+        "postprocess": 8.17
+      }
+    },
+    {
+      "label": "finetune",
+      "weights": "finetune_best.pt",
+      "model_params": 11137922,
+      "overall": {
+        "precision": 0.7468589822062534,
+        "recall": 0.6792169763756096,
+        "map50": 0.7179209060790327,
+        "map50_95": 0.5686602297090844
+      },
+      "per_class": {
+        "dent": {
+          "instances": 236,
+          "precision": 0.6821330449237436,
+          "recall": 0.5338983050847458,
+          "map50": 0.5919791378122445,
+          "map50_95": 0.3323366791895508
+        },
+        "scratch": {
+          "instances": 307,
+          "precision": 0.6143592729065163,
+          "recall": 0.5635179153094463,
+          "map50": 0.5555874585013878,
+          "map50_95": 0.30749732965440896
+        },
+        "crack": {
+          "instances": 70,
+          "precision": 0.533972004663654,
+          "recall": 0.42857142857142855,
+          "map50": 0.4359615299282024,
+          "map50_95": 0.22916918130455008
+        },
+        "glass": {
+          "instances": 71,
+          "precision": 0.9031192794254427,
+          "recall": 0.971830985915493,
+          "map50": 0.9861479448216907,
+          "map50_95": 0.9281567541150867
+        },
+        "lamp": {
+          "instances": 69,
+          "precision": 0.8289635955952822,
+          "recall": 0.7024832233725448,
+          "map50": 0.8372611301165536,
+          "map50_95": 0.7293308457556156
+        },
+        "tire": {
+          "instances": 32,
+          "precision": 0.918606695722882,
+          "recall": 0.875,
+          "map50": 0.9005882352941177,
+          "map50_95": 0.8854705882352942
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 0.17,
+        "inference": 5.05,
+        "loss": 0.0,
+        "postprocess": 17.43
+      }
+    }
+  ]
+}

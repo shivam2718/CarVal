@@ -1,0 +1,55 @@
+# Source dataset class name -> CarVal class (dent, scratch, crack, glass, lamp, tire).
+#
+# Names are matched after normalising: lower-case, "-" and "_" become spaces,
+# repeated spaces collapsed. Map a name to null to drop it on purpose.
+# Classes not listed here are dropped and reported, so run
+#   python data/prepare_dataset.py inspect --src <dataset>
+# first and add any names it shows as "unmapped".
+
+mapping:
+  # CarDD official names (cardd-ustc.github.io)
+  dent: dent
+  scratch: scratch
+  crack: crack
+  glass shatter: glass
+  lamp broken: lamp
+  tire flat: tire
+
+  # Common Roboflow Universe variants
+  dents: dent
+  car dent: dent
+  dented: dent
+  scratches: scratch
+  car scratch: scratch
+  paint scratch: scratch
+  cracks: crack
+  cracked: crack
+  bumper crack: crack
+  glass: glass
+  broken glass: glass
+  shattered glass: glass
+  glass broken: glass
+  glass damage: glass
+  windshield damage: glass
+  broken windshield: glass
+  lamp: lamp
+  broken lamp: lamp
+  lamp damage: lamp
+  headlight damage: lamp
+  broken headlight: lamp
+  headlamp broken: lamp
+  taillight damage: lamp
+  broken taillight: lamp
+  tail lamp broken: lamp
+  tire: tire
+  tyre: tire
+  flat tire: tire
+  flat tyre: tire
+  tire damage: tire
+  tyre flat: tire
+  damaged tire: tire
+
+  # Generic labels with no single CarVal class - dropped on purpose
+  damage: null
+  car damage: null
+  car: null

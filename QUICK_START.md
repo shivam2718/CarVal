@@ -253,12 +253,15 @@ Perfect for showing the panel:
 
 ---
 
-## Next: Vision Service (Member 1)
+## Vision Service (Member 1)
 
-Once Member 1 creates the Vision Service on port 8001:
+The Vision Service runs on port 8001 (see `services/vision/README.md`):
+```bash
+cd services/vision && source .venv/bin/activate && python main.py
+```
+- Try it on its own at `http://localhost:8001/demo`
 - Add `VISION_SERVICE_URL=http://localhost:8001` to `.env`
-- Backend will automatically call it when you upload images
-- Results will appear in the "vision" section of Vehicle JSON
+- Backend integration is pending; results will appear in the "vision" section of Vehicle JSON
 
 ---
 

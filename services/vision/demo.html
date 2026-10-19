@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CarVal Vision Demo</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2430; --muted:#667085; --line:#e4e7ec; --accent:#2f5bea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1d2128; --text:#e8ebf0; --muted:#98a2b3; --line:#2c323c; --accent:#6b8cff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 16px; font:inherit; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  img { max-width:100%; border-radius:8px; display:block; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:14px; }
+  th { color:var(--muted); font-weight:500; }
+  .muted { color:var(--muted); }
+  pre { overflow:auto; background:var(--bg); padding:12px; border-radius:8px; font-size:12px; }
+  .err { color:#d92d20; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CarVal Vision Demo</h1>
+  <p class="sub">Upload a car photo. Detected damage is shown with bounding boxes, class and confidence.</p>
+
+  <div class="card">
+    <input type="file" id="file" accept="image/jpeg,image/png">
+    <button id="go" disabled>Analyze</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <img id="annotated" alt="Annotated car image">
+    <table>
+      <thead><tr><th>ID</th><th>Type</th><th>Confidence</th><th>Severity</th><th>Box (x1,y1,x2,y2)</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="muted" id="model"></p>
+    <details><summary>Raw JSON</summary><pre id="json"></pre></details>
+  </div>
+</main>
+<script>
+const file = document.getElementById('file'), go = document.getElementById('go'), status = document.getElementById('status');
+file.addEventListener('change', () => { go.disabled = !file.files.length; });
+go.addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('files', file.files[0]);
+  go.disabled = true; status.className = 'muted'; status.textContent = 'Analyzing...';
+  try {
+    const res = await fetch('/analyze/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    const r = data.image_results[0];
+    document.getElementById('annotated').src = '/annotated/' + encodeURIComponent(r.image_id) + '?t=' + Date.now();
+    const rows = document.getElementById('rows'); rows.replaceChildren();
+    for (const d of r.damages) {
+      const tr = rows.insertRow();
+      [d.damage_id, d.type, d.confidence.toFixed(2), d.severity, `${d.bbox.x1}, ${d.bbox.y1}, ${d.bbox.x2}, ${d.bbox.y2}`]
+        .forEach(v => { tr.insertCell().textContent = v; });
+    }
+    if (!r.damages.length) { const c = rows.insertRow().insertCell(); c.colSpan = 5; c.className = 'muted'; c.textContent = 'No damage detected'; }
+    document.getElementById('model').textContent = 'Model: ' + data.model;
+    document.getElementById('json').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('result').hidden = false;
+    status.textContent = r.damages.length + ' damage(s) found';
+  } catch (e) { status.className = 'err'; status.textContent = e.message; }
+  go.disabled = false;
+});
+</script>
+</body>
+</html>

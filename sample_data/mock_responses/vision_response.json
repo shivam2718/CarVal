@@ -1,0 +1,86 @@
+{
+  "model": "YOLOv8-damage-detection-v1",
+  "image_results": [
+    {
+      "image_id": "IMG-001",
+      "damages": [
+        {
+          "damage_id": "DMG-001",
+          "type": "tire",
+          "confidence": 0.9618,
+          "bbox": {
+            "x1": 29,
+            "y1": 220,
+            "x2": 362,
+            "y2": 554
+          },
+          "severity": "high",
+          "affected_part": null,
+          "evidence": [
+            "IMG-001"
+          ]
+        }
+      ]
+    },
+    {
+      "image_id": "IMG-002",
+      "damages": [
+        {
+          "damage_id": "DMG-002",
+          "type": "dent",
+          "confidence": 0.6832,
+          "bbox": {
+            "x1": 277,
+            "y1": 171,
+            "x2": 510,
+            "y2": 288
+          },
+          "severity": "medium",
+          "affected_part": null,
+          "evidence": [
+            "IMG-002"
+          ]
+        },
+        {
+          "damage_id": "DMG-003",
+          "type": "scratch",
+          "confidence": 0.4404,
+          "bbox": {
+            "x1": 547,
+            "y1": 304,
+            "x2": 627,
+            "y2": 417
+          },
+          "severity": "low",
+          "affected_part": null,
+          "evidence": [
+            "IMG-002"
+          ]
+        },
+        {
+          "damage_id": "DMG-004",
+          "type": "scratch",
+          "confidence": 0.3672,
+          "bbox": {
+            "x1": 575,
+            "y1": 321,
+            "x2": 620,
+            "y2": 403
+          },
+          "severity": "low",
+          "affected_part": null,
+          "evidence": [
+            "IMG-002"
+          ]
+        }
+      ]
+    }
+  ],
+  "odometer": {
+    "detected": false,
+    "value_km": null,
+    "confidence": null,
+    "image_id": null,
+    "evidence": []
+  }
+}
