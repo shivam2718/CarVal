@@ -7,6 +7,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import DamageViewer from '../../../components/DamageViewer'
 
 interface InspectionResult {
   vehicle_id: string
@@ -100,9 +101,12 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
               Waiting for vision service results...
             </div>
           )}
-          <pre className="bg-gray-100 p-4 rounded mt-4 text-sm overflow-auto max-h-64">
-            {JSON.stringify(results?.vision, null, 2)}
-          </pre>
+          <div className="mt-4">
+            <DamageViewer
+              inspectionId={params.id}
+              results={results?.vision?.damage_detection?.image_results ?? []}
+            />
+          </div>
         </div>
 
         {/* Document Results */}
