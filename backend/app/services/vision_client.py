@@ -1,67 +1,58 @@
 """
-Vision Service Client
-Member 3 - Backend
-Calls Member 1's Vision Service and processes responses
+Vision Service Client (Member 3 -> Member 1)
+Sends uploaded car images to the Vision Service (port 8001) and returns its response unchanged.
+File names are set to the backend image ID (IMG-XXXX.jpg) so damage evidence points at the right image.
 """
 
-import httpx
-from typing import List, Dict, Any
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import httpx
+
+
+class VisionServiceError(Exception):
+    """Raised when the Vision Service is down or returns an error."""
 
 
 class VisionServiceClient:
-    """Client for interacting with Member 1's Vision Service"""
-    
-    def __init__(self):
-        self.vision_service_url = os.getenv("VISION_SERVICE_URL", "http://localhost:8001")
-    
-    async def analyze_images(self, image_paths: List[str]) -> Dict[str, Any]:
-        """
-        Send images to Vision Service for damage detection
-        
-        Args:
-            image_paths: List of paths to car images
-            
-        Returns:
-            Vision analysis results with damages and confidence scores
-        """
-        # TODO: Implement actual HTTP call to Member 1's Vision Service
-        # Expected response format:
-        # {
-        #   "image_results": [
-        #     {
-        #       "image_id": "IMG-xxx",
-        #       "damages": [
-        #         {
-        #           "type": "dent",
-        #           "confidence": 0.95,
-        #           "bbox": {"x1": 100, "y1": 100, "x2": 200, "y2": 200},
-        #           "severity": "medium"
-        #         }
-        #       ]
-        #     }
-        #   ]
-        # }
-        
-        return {
-            "model": "YOLOv8-damage-detection-v1",
-            "image_results": []
-        }
-    
-    async def detect_odometer(self, image_path: str) -> Dict[str, Any]:
-        """
-        Detect odometer reading from vehicle image
-        
-        Args:
-            image_path: Path to image containing odometer
-            
-        Returns:
-            Odometer reading with confidence
-        """
-        # TODO: Implement call to Member 1's odometer detection
-        
-        return {
-            "detected": False,
-            "value_km": None,
-            "confidence": None
-        }
+    def __init__(self) -> None:
+        self.base_url = os.getenv("VISION_SERVICE_URL", "http://localhost:8001").rstrip("/")
+        self.timeout = float(os.getenv("VISION_TIMEOUT_S", "120"))
+
+    async def health(self) -> str:
+        """'operational' | 'degraded' | 'error' (used by GET /health)."""
+        try:
+            async with httpx.AsyncClient(timeout=2.5) as client:
+                r = await client.get(f"{self.base_url}/health")
+            if r.status_code != 200:
+                return "error"
+            return "operational" if r.json().get("status") == "healthy" else "degraded"
+        except Exception:
+            return "error"
+
+    async def analyze_images(self, images: List[Dict[str, Any]]) -> Dict[str, Any]:
+        files = []
+        for img in images:
+            ext = Path(img["filename"] or "").suffix.lower() or ".jpg"
+            files.append(
+                ("files", (f"{img['file_id']}{ext}", img["contents"], img.get("content_type") or "image/jpeg"))
+            )
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                r = await client.post(f"{self.base_url}/analyze/upload", files=files)
+        except httpx.HTTPError as e:
+            raise VisionServiceError(f"Vision Service unreachable at {self.base_url}: {e}") from e
+
+        if r.status_code != 200:
+            raise VisionServiceError(f"Vision Service returned {r.status_code}: {r.text[:300]}")
+        return r.json()
+
+    async def annotated(self, image_id: str) -> Optional[bytes]:
+        """JPEG with boxes drawn by the Vision Service (None if not cached there)."""
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(f"{self.base_url}/annotated/{image_id}")
+            return r.content if r.status_code == 200 else None
+        except httpx.HTTPError:
+            return None
