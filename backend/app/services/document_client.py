@@ -8,6 +8,8 @@ import httpx
 from typing import List, Dict, Any
 import os
 import json
+from pathlib import PurePath
+import mimetypes
 
 
 class DocumentAIClient:
@@ -15,7 +17,52 @@ class DocumentAIClient:
     
     def __init__(self):
         self.document_ai_url = os.getenv("DOCUMENT_AI_SERVICE_URL", "http://localhost:8002")
-        self.timeout = 30
+        # Numeric OCR tries multiple image variants; allow those passes to finish.
+        self.timeout = 90
+
+    @staticmethod
+    def _upload_file(document_path: str, file_bytes: bytes):
+        """Keep the real extension and MIME type so the service can identify PDFs."""
+        filename = PurePath(document_path or "document").name
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        return {"file": (filename, file_bytes, content_type)}
+
+    async def extract_text(self, document_path: str, file_bytes: bytes, mode: str = "document") -> Dict[str, Any]:
+        """Run OCR through Document AI and return its text for field verification."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.document_ai_url}/extract/text",
+                    files=self._upload_file(document_path, file_bytes),
+                    data={"mode": mode},
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            print(f"Error extracting text with Document AI: {e}")
+            return {"extracted": False, "raw_text": "", "error": str(e)}
+
+    async def extract_odometer(self, document_path: str, file_bytes: bytes) -> Dict[str, Any]:
+        """Use Document AI's dedicated pretrained odometer OCR endpoint."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.document_ai_url}/extract/odometer",
+                    files=self._upload_file(document_path, file_bytes),
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            print(f"Error extracting odometer reading with Document AI: {e}")
+            return {
+                "extracted": False,
+                "raw_text": "",
+                "reading_candidates": [],
+                "ocr_confidence": 0.0,
+                "error": str(e),
+            }
     
     async def extract_rc_info(self, document_path: str, file_bytes: bytes) -> Dict[str, Any]:
         """
@@ -30,7 +77,7 @@ class DocumentAIClient:
         """
         try:
             async with httpx.AsyncClient() as client:
-                files = {'file': ('rc.jpg', file_bytes, 'image/jpeg')}
+                files = self._upload_file(document_path, file_bytes)
                 response = await client.post(
                     f"{self.document_ai_url}/extract/rc",
                     files=files,
@@ -70,7 +117,7 @@ class DocumentAIClient:
         """
         try:
             async with httpx.AsyncClient() as client:
-                files = {'file': ('insurance.jpg', file_bytes, 'image/jpeg')}
+                files = self._upload_file(document_path, file_bytes)
                 response = await client.post(
                     f"{self.document_ai_url}/extract/insurance",
                     files=files,
@@ -121,7 +168,8 @@ class DocumentAIClient:
         try:
             async with httpx.AsyncClient() as client:
                 for idx, file_bytes in enumerate(file_bytes_list):
-                    files = {'file': (f'service_bill_{idx}.jpg', file_bytes, 'image/jpeg')}
+                    source_name = document_paths[idx] if idx < len(document_paths) else f"service_bill_{idx}.jpg"
+                    files = self._upload_file(source_name, file_bytes)
                     response = await client.post(
                         f"{self.document_ai_url}/extract/service",
                         files=files,
@@ -155,7 +203,7 @@ class DocumentAIClient:
         """
         try:
             async with httpx.AsyncClient() as client:
-                files = {'file': ('service_bill.jpg', file_bytes, 'image/jpeg')}
+                files = self._upload_file(document_path, file_bytes)
                 response = await client.post(
                     f"{self.document_ai_url}/extract/service",
                     files=files,

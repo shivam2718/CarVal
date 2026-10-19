@@ -15,10 +15,16 @@ export default function InspectionPage() {
   // RC Fields
   const [rcFields, setRcFields] = useState({
     registration_number: "",
-    model: "",
-    manufacturing_year: "",
-    fuel_type: "",
     vin: "",
+    make: "",
+    model: "",
+    variant: "",
+    manufacturing_year: "",
+    registration_year: "",
+    fuel_type: "",
+    transmission: "",
+    engine_displacement_cc: "",
+    engine_power_bhp: "",
   })
   const [rcFile, setRcFile] = useState<File | null>(null)
   const [rcResults, setRcResults] = useState<any>(null)
@@ -32,13 +38,26 @@ export default function InspectionPage() {
   const [insuranceFile, setInsuranceFile] = useState<File | null>(null)
   const [insuranceResults, setInsuranceResults] = useState<any>(null)
 
-  // Service Fields
-  const [serviceFields, setServiceFields] = useState({
-    claimed_mileage_km: "",
-    accident_history: "",
+  // Service Fields - Support multiple service records
+  const [serviceRecords, setServiceRecords] = useState<Array<{
+    date: string;
+    mileage_km: string;
+    work_done: string;
+    cost: string;
+  }>>([])
+  const [newServiceRecord, setNewServiceRecord] = useState({
+    date: "",
+    mileage_km: "",
+    work_done: "",
+    cost: "",
   })
   const [serviceFiles, setServiceFiles] = useState<File[]>([])
   const [serviceResults, setServiceResults] = useState<any>(null)
+
+  // Odometer image and user-entered reading
+  const [odometerReading, setOdometerReading] = useState("")
+  const [odometerFile, setOdometerFile] = useState<File | null>(null)
+  const [odometerResults, setOdometerResults] = useState<any>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
@@ -58,7 +77,7 @@ export default function InspectionPage() {
     }
   }
 
-  const verifyDocument = async (docType: 'rc' | 'insurance' | 'service') => {
+  const verifyDocument = async (docType: 'rc' | 'insurance' | 'service' | 'odometer') => {
     if (!inspectionId) {
       alert('Please create inspection first')
       return
@@ -79,11 +98,33 @@ export default function InspectionPage() {
         alert('Please upload Insurance document')
         return
       }
+    } else if (docType === 'odometer') {
+      fields = { odometer_reading_km: odometerReading }
+      file = odometerFile
+      if (!file) {
+        alert('Please upload an odometer image')
+        return
+      }
+      if (!odometerReading.trim()) {
+        alert('Please enter the odometer reading in kilometers')
+        return
+      }
     } else {
-      fields = serviceFields
+      // For service, combine all service records into a single fields object
+      fields = {}
+      serviceRecords.forEach((record, index) => {
+        fields[`service_${index}_date`] = record.date
+        fields[`service_${index}_mileage_km`] = record.mileage_km
+        fields[`service_${index}_work_done`] = record.work_done
+      })
+      
       files = serviceFiles
       if (files.length === 0) {
         alert('Please upload at least one Service document')
+        return
+      }
+      if (serviceRecords.length === 0) {
+        alert('Please add at least one service record')
         return
       }
     }
@@ -95,7 +136,10 @@ export default function InspectionPage() {
       if (docType === 'service') {
         serviceFiles.forEach(f => formData.append('files', f))
       } else {
-        formData.append('files', file!)
+        const uploadName = docType === 'odometer' && !file!.name.toLowerCase().includes('odometer')
+          ? `odometer_${file!.name}`
+          : file!.name
+        formData.append('files', file!, uploadName)
       }
 
       // Upload document
@@ -106,6 +150,7 @@ export default function InspectionPage() {
       })
 
       if (!uploadRes.ok) throw new Error('Upload failed')
+      const uploadData = await uploadRes.json()
       console.log('✓ Document(s) uploaded')
 
       // Verify fields
@@ -113,10 +158,17 @@ export default function InspectionPage() {
       const verifyRes = await fetch(`${apiUrl}/inspection/${inspectionId}/verify-fields`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fields),
+        body: JSON.stringify({
+          fields,
+          document_ids: uploadData.files.map((uploadedFile: { file_id: string }) => uploadedFile.file_id),
+        }),
       })
 
-      if (!verifyRes.ok) throw new Error('Verification failed')
+      if (!verifyRes.ok) {
+        const errorData = await verifyRes.json().catch(() => null)
+        const detail = errorData?.detail
+        throw new Error(typeof detail === 'string' ? detail : detail?.message || 'Verification failed')
+      }
       const result = await verifyRes.json()
       
       console.log(`✓ ${docType} verification complete:`, result)
@@ -125,6 +177,8 @@ export default function InspectionPage() {
         setRcResults(result)
       } else if (docType === 'insurance') {
         setInsuranceResults(result)
+      } else if (docType === 'odometer') {
+        setOdometerResults(result)
       } else {
         setServiceResults(result)
       }
@@ -148,10 +202,6 @@ export default function InspectionPage() {
 
   const handleInsuranceFieldChange = (field: string, value: string) => {
     setInsuranceFields(prev => ({ ...prev, [field]: value }))
-  }
-
-  const handleServiceFieldChange = (field: string, value: string) => {
-    setServiceFields(prev => ({ ...prev, [field]: value }))
   }
 
   return (
@@ -207,27 +257,45 @@ export default function InspectionPage() {
                   <h3 className="text-lg font-bold text-cyan-200 mb-4">Enter RC Information:</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {[
-                      { field: 'registration_number', label: 'Registration Number', type: 'text' },
-                      { field: 'model', label: 'Model', type: 'text' },
-                      { field: 'manufacturing_year', label: 'Manufacturing Year', type: 'number' },
-                      { field: 'fuel_type', label: 'Fuel Type', type: 'select' },
-                      { field: 'vin', label: 'VIN / Chassis Number', type: 'text' },
+                      { field: 'registration_number', label: 'Registration Number', type: 'text', required: true },
+                      { field: 'vin', label: 'VIN / Chassis Number', type: 'text', required: true },
+                      { field: 'make', label: 'Make (Brand)', type: 'text', required: true },
+                      { field: 'model', label: 'Model', type: 'text', required: true },
+                      { field: 'variant', label: 'Variant (e.g., LXi, VXi)', type: 'text', required: false },
+                      { field: 'manufacturing_year', label: 'Manufacturing Year', type: 'number', required: true },
+                      { field: 'registration_year', label: 'Registration Year', type: 'number', required: true },
+                      { field: 'fuel_type', label: 'Fuel Type', type: 'select', required: true },
+                      { field: 'transmission', label: 'Transmission', type: 'select', required: true },
+                      { field: 'engine_displacement_cc', label: 'Engine Displacement (cc)', type: 'number', required: true },
+                      { field: 'engine_power_bhp', label: 'Engine Power (bhp)', type: 'number', required: false },
                     ].map((item) => (
                       <div key={item.field}>
-                        <label className="block text-sm text-gray-300 mb-2 font-semibold">{item.label}</label>
+                        <label className="block text-sm text-gray-300 mb-2 font-semibold">
+                          {item.label}
+                          {item.required && <span className="text-red-400">*</span>}
+                        </label>
                         {item.type === 'select' ? (
                           <select
                             value={rcFields[item.field as keyof typeof rcFields]}
                             onChange={(e) => handleRcFieldChange(item.field, e.target.value)}
                             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-cyan-500 outline-none"
                           >
-                            <option value="">Select fuel type</option>
-                            <option value="petrol">Petrol</option>
-                            <option value="diesel">Diesel</option>
-                            <option value="cng">CNG</option>
-                            <option value="lpg">LPG</option>
-                            <option value="electric">Electric</option>
-                            <option value="hybrid">Hybrid</option>
+                            <option value="">Select {item.label.toLowerCase()}</option>
+                            {item.field === 'fuel_type' ? (
+                              <>
+                                <option value="petrol">Petrol</option>
+                                <option value="diesel">Diesel</option>
+                                <option value="cng">CNG</option>
+                                <option value="lpg">LPG</option>
+                                <option value="electric">Electric</option>
+                                <option value="hybrid">Hybrid</option>
+                              </>
+                            ) : item.field === 'transmission' ? (
+                              <>
+                                <option value="manual">Manual</option>
+                                <option value="automatic">Automatic</option>
+                              </>
+                            ) : null}
                           </select>
                         ) : (
                           <input
@@ -392,39 +460,87 @@ export default function InspectionPage() {
                   <span className="text-3xl mr-3">🔧</span> Service Bills
                 </h2>
 
-                {/* Service Fields */}
+                {/* Add Service Record Form */}
                 <div className="mb-6 pb-6 border-b border-purple-500/20">
-                  <h3 className="text-lg font-bold text-purple-200 mb-4">Enter Service Information:</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { field: 'claimed_mileage_km', label: 'Claimed Mileage (km)', type: 'number' },
-                      { field: 'accident_history', label: 'Accident History', type: 'select' },
-                    ].map((item) => (
-                      <div key={item.field}>
-                        <label className="block text-sm text-gray-300 mb-2 font-semibold">{item.label}</label>
-                        {item.type === 'select' ? (
-                          <select
-                            value={serviceFields[item.field as keyof typeof serviceFields]}
-                            onChange={(e) => handleServiceFieldChange(item.field, e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
-                          >
-                            <option value="">Select accident history</option>
-                            <option value="none">None</option>
-                            <option value="minor">Minor</option>
-                            <option value="major">Major</option>
-                          </select>
-                        ) : (
-                          <input
-                            type={item.type}
-                            value={serviceFields[item.field as keyof typeof serviceFields]}
-                            onChange={(e) => handleServiceFieldChange(item.field, e.target.value)}
-                            placeholder={`Enter ${item.label.toLowerCase()}`}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
-                          />
-                        )}
+                  <h3 className="text-lg font-bold text-purple-200 mb-4">Add Service Records:</h3>
+                  <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-2 font-semibold">Service Date*</label>
+                        <input
+                          type="date"
+                          value={newServiceRecord.date}
+                          onChange={(e) => setNewServiceRecord(prev => ({ ...prev, date: e.target.value }))}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
+                        />
                       </div>
-                    ))}
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-2 font-semibold">Mileage (km)*</label>
+                        <input
+                          type="number"
+                          value={newServiceRecord.mileage_km}
+                          onChange={(e) => setNewServiceRecord(prev => ({ ...prev, mileage_km: e.target.value }))}
+                          placeholder="e.g., 45000"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-2 font-semibold">Work Done*</label>
+                        <input
+                          type="text"
+                          value={newServiceRecord.work_done}
+                          onChange={(e) => setNewServiceRecord(prev => ({ ...prev, work_done: e.target.value }))}
+                          placeholder="e.g., Oil Change, Filter Replacement"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-2 font-semibold">Cost (INR)</label>
+                        <input
+                          type="number"
+                          value={newServiceRecord.cost}
+                          onChange={(e) => setNewServiceRecord(prev => ({ ...prev, cost: e.target.value }))}
+                          placeholder="e.g., 2500"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:border-purple-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!newServiceRecord.date || !newServiceRecord.mileage_km || !newServiceRecord.work_done) {
+                          alert('Please fill all required fields (marked with *)')
+                          return
+                        }
+                        setServiceRecords(prev => [...prev, newServiceRecord])
+                        setNewServiceRecord({ date: '', mileage_km: '', work_done: '', cost: '' })
+                      }}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg transition-all"
+                    >
+                      + Add Service Record
+                    </button>
                   </div>
+
+                  {/* Display Added Service Records */}
+                  {serviceRecords.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-purple-300 font-semibold">Added Records ({serviceRecords.length}):</h4>
+                      {serviceRecords.map((record, idx) => (
+                        <div key={idx} className="bg-purple-500/20 border border-purple-400/30 rounded-lg p-3 flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="text-purple-300 font-semibold text-sm">{record.date} - {record.mileage_km} km</p>
+                            <p className="text-gray-400 text-xs">{record.work_done}</p>
+                            {record.cost && <p className="text-gray-400 text-xs">Cost: ₹{record.cost}</p>}
+                          </div>
+                          <button
+                            onClick={() => setServiceRecords(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-300 ml-4 font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Service Upload */}
@@ -453,9 +569,9 @@ export default function InspectionPage() {
                 {/* Service Verify Button */}
                 <button
                   onClick={() => verifyDocument('service')}
-                  disabled={verifying === 'service' || serviceFiles.length === 0}
+                  disabled={verifying === 'service' || serviceFiles.length === 0 || serviceRecords.length === 0}
                   className={`w-full font-bold py-3 px-4 rounded-lg transition-all ${
-                    verifying === 'service' || serviceFiles.length === 0
+                    verifying === 'service' || serviceFiles.length === 0 || serviceRecords.length === 0
                       ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       : 'bg-purple-600 hover:bg-purple-500 text-white'
                   }`}
@@ -471,7 +587,7 @@ export default function InspectionPage() {
                       : 'bg-yellow-500/20 border-yellow-400/30'
                   }`}>
                     <h4 className={`font-bold mb-3 ${serviceResults.all_matched ? 'text-green-300' : 'text-yellow-300'}`}>
-                      {serviceResults.all_matched ? '✅ All Service Fields Verified' : '⚠️ Some Service Fields Not Found'}
+                      {serviceResults.all_matched ? '✅ All Service Records Verified' : '⚠️ Some Service Records Not Found'}
                     </h4>
                     <div className="space-y-2">
                       {Object.entries(serviceResults.verification_results).map(([field, result]: any) => (
@@ -488,10 +604,92 @@ export default function InspectionPage() {
               </div>
             </div>
 
+            {/* Odometer Image Verification */}
+            <div className="mb-8 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-8">
+              <h2 className="mb-2 text-2xl font-bold text-amber-300">Odometer Reading</h2>
+              <p className="mb-6 text-sm text-gray-300">
+                Upload a clear photo of the dashboard odometer and enter the displayed reading. OCR will check the number in the image.
+              </p>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label htmlFor="odometer-reading" className="mb-2 block text-sm font-semibold text-gray-300">
+                    Odometer reading (km)
+                  </label>
+                  <input
+                    id="odometer-reading"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={odometerReading}
+                    onChange={(e) => setOdometerReading(e.target.value)}
+                    placeholder="e.g., 48235"
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-3 text-white outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="odometer-image" className="mb-2 block text-sm font-semibold text-gray-300">
+                    Odometer image
+                  </label>
+                  <input
+                    id="odometer-image"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff"
+                    onChange={(e) => setOdometerFile(e.target.files?.[0] ?? null)}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5 text-white file:mr-4 file:rounded file:border-0 file:bg-amber-600 file:px-3 file:py-2 file:font-semibold file:text-white"
+                  />
+                  {odometerFile && <p className="mt-2 text-sm text-amber-200">Selected: {odometerFile.name}</p>}
+                </div>
+              </div>
+
+              <button
+                onClick={() => verifyDocument('odometer')}
+                disabled={verifying === 'odometer' || !odometerFile || !odometerReading.trim()}
+                className={`mt-6 w-full rounded-lg px-4 py-3 font-bold transition-all ${
+                  verifying === 'odometer' || !odometerFile || !odometerReading.trim()
+                    ? 'cursor-not-allowed bg-gray-600 text-gray-400'
+                    : 'bg-amber-600 text-white hover:bg-amber-500'
+                }`}
+              >
+                {verifying === 'odometer' ? 'Verifying odometer...' : 'Verify Odometer Reading'}
+              </button>
+
+              {odometerResults && (
+                <div className={`mt-6 rounded-lg border p-4 ${
+                  odometerResults.all_matched
+                    ? 'border-green-400/30 bg-green-500/20'
+                    : 'border-yellow-400/30 bg-yellow-500/20'
+                }`}>
+                  <h3 className={`mb-3 font-bold ${odometerResults.all_matched ? 'text-green-300' : 'text-yellow-300'}`}>
+                    {odometerResults.all_matched ? 'Odometer reading verified' : 'Odometer reading could not be verified'}
+                  </h3>
+                  {Object.entries(odometerResults.verification_results).map(([field, result]: any) => (
+                    <div key={field} className="flex justify-between text-sm">
+                      <span className="text-gray-300">Entered reading: {result.value} km</span>
+                      <span className={result.found ? 'text-green-400' : 'text-red-400'}>
+                        {result.found ? 'Found in image' : 'Not found'}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="mt-3 border-t border-white/10 pt-3 text-sm">
+                    <p className="text-gray-300">OCR candidates: <span className="font-mono text-white">
+                      {odometerResults.recognized_readings?.length ? odometerResults.recognized_readings.join(', ') : 'No digits recognized'}
+                    </span></p>
+                    {odometerResults.ocr_engines?.length > 0 && (
+                      <p className="mt-1 text-gray-400">Recognizers: {odometerResults.ocr_engines.join(', ')}</p>
+                    )}
+                    {typeof odometerResults.ocr_confidence === 'number' && (
+                      <p className="mt-1 text-gray-400">OCR confidence: {Math.round(odometerResults.ocr_confidence * 100)}%</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Summary Section */}
             <div className="mt-12 p-6 rounded-2xl border border-blue-500/20 bg-blue-500/10">
               <h3 className="text-lg font-bold text-blue-300 mb-4">✨ Verification Summary</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-2 gap-4 text-center md:grid-cols-4">
                 <div>
                   <p className="text-gray-400 text-sm mb-1">RC Status</p>
                   <p className={`font-bold ${rcResults?.all_matched ? 'text-green-400' : rcResults ? 'text-yellow-400' : 'text-gray-500'}`}>
@@ -510,6 +708,12 @@ export default function InspectionPage() {
                     {serviceResults?.all_matched ? '✅ Verified' : serviceResults ? '⚠️ Incomplete' : '○ Pending'}
                   </p>
                 </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Odometer Status</p>
+                  <p className={`font-bold ${odometerResults?.all_matched ? 'text-green-400' : odometerResults ? 'text-yellow-400' : 'text-gray-500'}`}>
+                    {odometerResults?.all_matched ? 'Verified' : odometerResults ? 'Incomplete' : 'Pending'}
+                  </p>
+                </div>
               </div>
             </div>
           </>
@@ -525,7 +729,7 @@ export default function InspectionPage() {
             </li>
             <li className="flex">
               <span className="text-cyan-400 font-bold mr-3">2.</span>
-              <span>For each document (RC, Insurance, Service):</span>
+              <span>For each document or odometer image (RC, Insurance, Service):</span>
             </li>
             <li className="flex ml-8">
               <span className="text-cyan-400 font-bold mr-3">a.</span>
