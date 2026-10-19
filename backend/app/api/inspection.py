@@ -378,33 +378,63 @@ async def verify_fields(inspection_id: str, user_fields: dict):
     if inspection_id not in inspections_db:
         raise HTTPException(status_code=404, detail="Inspection not found")
     
+    # Accept both the original flat fields object and a scoped payload from the UI.
+    document_ids = user_fields.get("document_ids") if isinstance(user_fields, dict) else None
+    if isinstance(user_fields, dict) and isinstance(user_fields.get("fields"), dict):
+        user_fields = user_fields["fields"]
+    else:
+        user_fields = {k: v for k, v in user_fields.items() if k != "document_ids"}
+
     documents = inspections_db[inspection_id]["documents"]
+    if document_ids:
+        selected_ids = set(document_ids)
+        documents = [doc for doc in documents if doc["file_id"] in selected_ids]
     
     if not documents:
         raise HTTPException(status_code=400, detail="No documents uploaded")
     
     logger.info(f"Verifying {len(user_fields)} fields against {len(documents)} documents")
     
-    # Extract text from all documents using Tesseract
+    # Use the same Document AI OCR pipeline as document extraction so PDF/image
+    # handling stays consistent and OCR failures are visible to the caller.
     all_extracted_text = ""
+    extraction_errors = []
+    odometer_candidates = []
+    odometer_ocr_confidence = None
+    odometer_ocr_engines = []
+    is_odometer_verification = any("odometer" in str(name).lower() for name in user_fields)
     for doc in documents:
         try:
-            import pytesseract
-            from PIL import Image
-            import io
-            
-            logger.info(f"Extracting text from {doc['filename']}")
-            image = Image.open(io.BytesIO(doc["contents"]))
-            extracted_text = pytesseract.image_to_string(image)
-            all_extracted_text += " " + extracted_text
-            logger.info(f"Extracted {len(extracted_text)} characters")
+            logger.info(f"Extracting text from {doc['filename']} via Document AI")
+            if is_odometer_verification:
+                result = await document_client.extract_odometer(doc["filename"], doc["contents"])
+            else:
+                result = await document_client.extract_text(doc["filename"], doc["contents"])
+            text = result.get("raw_text", "")
+            if is_odometer_verification:
+                odometer_candidates.extend(result.get("reading_candidates", []))
+                odometer_ocr_confidence = result.get("ocr_confidence", result.get("confidence", 0.0))
+                odometer_ocr_engines.extend(result.get("ocr_engines", []))
+            if not text.strip():
+                extraction_errors.append({"filename": doc["filename"], "error": result.get("error", "No text recognized")})
+            all_extracted_text += "\n" + text
+            logger.info("Extracted %s characters", len(text))
         except Exception as e:
             logger.error(f"Error extracting text from {doc['filename']}: {e}")
+            extraction_errors.append({"filename": doc["filename"], "error": str(e)})
+
+    if not all_extracted_text.strip() and not is_odometer_verification:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Document text could not be extracted", "errors": extraction_errors},
+        )
     
     # Make case-insensitive for matching
     all_extracted_text_lower = all_extracted_text.lower()
     
     logger.info(f"Total extracted text length: {len(all_extracted_text)} characters")
+    logger.info(f"Extracted text preview (first 500 chars):\n{all_extracted_text[:500]}")
+    logger.info(f"Extracted text preview (last 500 chars):\n{all_extracted_text[-500:]}")
     
     # Verify each field
     verification_results = {}
@@ -429,8 +459,35 @@ async def verify_fields(inspection_id: str, user_fields: dict):
             found = DateMatcher.date_exists_in_text(str(field_value), all_extracted_text)
             logger.info(f"Field {field_name} (DATE) = '{field_value}': {'FOUND' if found else 'NOT FOUND'}")
         else:
-            # Use simple case-insensitive string matching for non-date fields
-            found = str(field_value).lower() in all_extracted_text_lower
+            # Use flexible fuzzy matching for non-date fields
+            field_value_str = str(field_value).lower()
+            
+            # Remove special characters and extra spaces for comparison
+            import re
+            
+            # Ignore formatting punctuation while keeping the full value intact.
+            normalized_field = re.sub(r'[^a-z0-9]', '', field_value_str)
+            normalized_text = re.sub(r'[^a-z0-9]', '', all_extracted_text_lower)
+            
+            if "odometer" in field_name.lower():
+                # Only accept an exact, complete OCR reading from this image.
+                expected_reading = ''.join(re.findall(r'\d+', field_value_str))
+                text_readings = {re.sub(r'\D', '', str(item.get("value", ""))) for item in odometer_candidates}
+                found = bool(expected_reading) and expected_reading in text_readings
+            else:
+                # Try exact match first, then match without punctuation/spacing.
+                found = field_value_str in all_extracted_text_lower
+                if not found and len(normalized_field) > 3:
+                    found = normalized_field in normalized_text
+            
+            # Numeric fields must match a complete numeric token; substring
+            # matches can incorrectly accept values such as 15 inside 2015.
+            if not found and "odometer" not in field_name.lower() and any(num_field in field_name.lower() for num_field in ['year', 'cc', 'bhp', 'mileage']):
+                field_numbers = re.findall(r'\d+', field_value_str)
+                if field_numbers:
+                    text_numbers = re.findall(r'\d+', all_extracted_text_lower)
+                    found = all(number in text_numbers for number in field_numbers)
+            
             logger.info(f"Field {field_name} = '{field_value}': {'FOUND' if found else 'NOT FOUND'}")
         
         verification_results[field_name] = {
@@ -447,7 +504,8 @@ async def verify_fields(inspection_id: str, user_fields: dict):
         "user_fields": user_fields,
         "verification_results": verification_results,
         "all_matched": all_matched,
-        "extracted_text_preview": all_extracted_text[:500]  # Store first 500 chars for debug
+        "extracted_text_preview": all_extracted_text[:500],
+        "extraction_errors": extraction_errors,
     }
     
     logger.info(f"Verification complete: all_matched={all_matched}")
@@ -456,7 +514,17 @@ async def verify_fields(inspection_id: str, user_fields: dict):
         "status": "completed",
         "all_matched": all_matched,
         "verification_results": verification_results,
-        "message": "✅ All fields found in document!" if all_matched else "⚠️ Some fields not found. Please upload a clearer image."
+        "extracted_text_preview": all_extracted_text[:500],
+        "recognized_readings": list(dict.fromkeys(str(item.get("value", "")) for item in odometer_candidates if item.get("value"))),
+        "ocr_confidence": odometer_ocr_confidence,
+        "ocr_engines": list(dict.fromkeys(odometer_ocr_engines)),
+        "extraction_errors": extraction_errors,
+        "message": (
+            "✅ Odometer reading verified!" if all_matched and is_odometer_verification
+            else "❌ No matching odometer reading was recognized in the image." if is_odometer_verification
+            else "✅ All fields found in document!" if all_matched
+            else "⚠️ Some fields not found. Please upload a clearer image."
+        )
     }
 
 
