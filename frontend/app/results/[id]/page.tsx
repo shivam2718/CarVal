@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import DamageViewer from '../../../components/DamageViewer'
+import DiagnosticPanel from '../../../components/DiagnosticPanel'
 
 interface InspectionResult {
   vehicle_id: string
@@ -78,7 +79,7 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
               <p className="text-cyan-400 font-mono text-sm">ID: {results?.vehicle_id}</p>
             </div>
             <a
-              href="/inspection"
+              href="/inspection/analyze"
               className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-semibold transition-all duration-300"
             >
               ← New Inspection
@@ -106,9 +107,14 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
             />
           </div>
         </div>
+        </div>
       </div>
 
       <div className="container mx-auto px-6 py-12 max-w-6xl">
+         <div className="container mx-auto px-6 py-12 max-w-6xl">
+        <div className="mb-12">
+          <DiagnosticPanel inspectionId={params.id} />
+        </div>
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
@@ -315,6 +321,7 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }

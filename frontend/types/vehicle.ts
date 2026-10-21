@@ -42,6 +42,72 @@ export interface InspectionResult {
   vision: VisionData | null
   documents: any | null      // rc / insurance / service / service_history
   pipeline_status: Record<string, boolean>
+  engine_assessment?: EngineAssessment
 }
 
 export type DocType = 'rc' | 'insurance' | 'service'
+
+
+// ---- OBD-II diagnostic photo feature (all optional so old responses still work) ----
+export type ScannerStatus = 'unknown' | 'stored' | 'pending' | 'permanent' | 'current'
+export type ScanContext = 'unknown' | 'freeze_frame' | 'stored' | 'pending' | 'permanent' | 'current' | 'live'
+
+export interface DiagnosticCode {
+  code: string
+  description?: string | null
+  in_catalogue?: boolean
+  scanner_status?: ScannerStatus
+  ocr_confidence?: number | null
+  entry_source?: 'ocr_confirmed' | 'user_added'
+  user_confirmed: boolean
+}
+
+export interface DiagnosticReading {
+  label: string
+  value: string
+  unit?: string | null
+  context?: ScanContext
+  user_confirmed: boolean
+}
+
+export interface DiagnosticEvidence {
+  evidence_id: string
+  source_type: string
+  source_image_id: string
+  uploaded_filename: string
+  ocr_status: 'uploaded' | 'needs_user_confirmation' | 'ocr_failed' | 'confirmed'
+  ocr_error?: string | null
+  ocr_text?: string | null
+  ocr_proposals?: {
+    codes: { code: string; ocr_confidence: number }[]
+    uncertain_codes: { raw_text: string; suggested_code: string; reason?: string }[]
+    readings: DiagnosticReading[]
+    status_keywords_seen: string[]
+  } | null
+  extracted_codes: DiagnosticCode[]
+  extracted_readings: DiagnosticReading[]
+  scan_context: ScanContext
+  no_codes_visible: boolean
+  notes: string[]
+}
+
+export interface DiagnosticRiskFlag {
+  flag: string
+  code?: string
+  description?: string | null
+  in_catalogue?: boolean
+  possible_causes?: string[]
+  scanner_status?: string
+  scan_context?: string
+  note?: string
+  evidence: string[]
+}
+
+export interface EngineAssessment {
+  status: 'not_provided' | 'awaiting_confirmation' | 'partially_confirmed' | 'confirmed'
+  diagnostic_evidence: DiagnosticEvidence[]
+  risk_level: string
+  risk_flags: DiagnosticRiskFlag[]
+  recommended_actions: string[]
+  limitations: string[]
+}

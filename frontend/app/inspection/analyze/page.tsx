@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   createInspection, uploadImages, uploadDocuments, runVision, runDocumentExtraction,
+  uploadDiagnosticPhotos, extractDiagnostic,
 } from '../../../lib/api'
 
 type Step = 'idle' | 'creating' | 'uploading' | 'analyzing' | 'done'
@@ -14,13 +15,16 @@ export default function AnalyzePage() {
   const [rc, setRc] = useState<File[]>([])
   const [insurance, setInsurance] = useState<File[]>([])
   const [service, setService] = useState<File[]>([])
+  // 2. state (after the `service` state line)
+  const [diag, setDiag] = useState<File[]>([])
   const [step, setStep] = useState<Step>('idle')
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
 
   const hasDocs = rc.length + insurance.length + service.length > 0
   const busy = step !== 'idle' && step !== 'done'
-  const canRun = (images.length > 0 || hasDocs) && !busy
+  // 3. canRun
+  const canRun = (images.length > 0 || hasDocs || diag.length > 0) && !busy
 
   async function handleAnalyze() {
     setError(null); setWarnings([])
@@ -29,17 +33,20 @@ export default function AnalyzePage() {
       const { inspection_id: id } = await createInspection()
 
       setStep('uploading')
+      let diagIds: string[] = []                                  // <-- add
       if (images.length) await uploadImages(id, images)
       if (rc.length) await uploadDocuments(id, rc, 'rc')
       if (insurance.length) await uploadDocuments(id, insurance, 'insurance')
       if (service.length) await uploadDocuments(id, service, 'service')
-
+      if (diag.length) diagIds = (await uploadDiagnosticPhotos(id, diag)).evidence.map((e) => e.evidence_id)   // <-- add
+      
       setStep('analyzing')
       // Vision and Document AI are independent -> run in parallel; one failing must not block the other
       const jobs: Promise<unknown>[] = []
       const names: string[] = []
       if (images.length) { jobs.push(runVision(id)); names.push('Vision') }
       if (hasDocs) { jobs.push(runDocumentExtraction(id)); names.push('Document AI') }
+      if (diagIds.length) { jobs.push(Promise.all(diagIds.map((e) => extractDiagnostic(id, e)))); names.push('Diagnostic OCR') }   // <-- add
       const settled = await Promise.allSettled(jobs)
       const failed = settled
         .map((s, i) => (s.status === 'rejected' ? `${names[i]}: ${(s.reason as Error).message}` : null))
@@ -85,6 +92,9 @@ export default function AnalyzePage() {
           accept=".pdf,.jpg,.jpeg,.png" files={rc} onChange={setRc} />
         <Picker label="Insurance policy" hint="PDF / JPG / PNG"
           accept=".pdf,.jpg,.jpeg,.png" files={insurance} onChange={setInsurance} />
+        // 5. picker, above the "Service bills" picker
+        <Picker label="OBD scanner screen photo (optional)" hint="Photo of a scanner showing fault codes. JPG / PNG. You confirm the codes on the results page."
+          accept=".jpg,.jpeg,.png" multiple files={diag} onChange={setDiag} />
         <Picker label="Service bills" hint="PDF / JPG / PNG, one or more"
           accept=".pdf,.jpg,.jpeg,.png" multiple files={service} onChange={setService} />
 
