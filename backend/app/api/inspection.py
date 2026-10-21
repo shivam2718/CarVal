@@ -17,6 +17,8 @@ import asyncio
 import logging
 from app.services.document_client import DocumentAIClient
 from app.services.date_matcher import DateMatcher
+from app.services.date_matcher import DateMatcher
+from app.services.diagnostic_assessment import build_engine_assessment
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -343,6 +345,7 @@ def get_inspection_results(inspection_id: str):
         "discrepancies": [],
         "knowledge_retrieval": {"status": "pending"},
         "risk_assessment": {"status": "pending"},
+        "engine_assessment": build_engine_assessment(inspections_db[inspection_id]),
         "llm_synthesis": {"status": "pending"},
         "final_report": {"status": "pending"},
         "pipeline_status": {
@@ -354,7 +357,10 @@ def get_inspection_results(inspection_id: str):
             "discrepancy_completed": False,
             "rag_completed": False,
             "llm_completed": False,
-            "report_completed": False
+            "report_completed": False,
+            "diagnostics_confirmed": any(
+                e.get("ocr_status") == "confirmed" for e in inspections_db[inspection_id].get("diagnostics", [])
+            )
         }
     }
     
