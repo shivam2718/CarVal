@@ -238,10 +238,9 @@ class DocumentExtractor:
         rgb = np.asarray(image)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
-        # Create only a few materially different inputs so the request stays fast.
-        # RapidOCR's detector handles the display location; these variants address
-        # LCD contrast, glare, and dark-on-light versus light-on-dark displays.
-        scale = min(3.0, max(1.0, 1400.0 / max(image.size)))
+        # Enlarge small dashboard photos before OCR; the odometer is often only
+        # a small part of the full image. Keep already-large originals intact.
+        scale = min(3.0, max(1.0, 2200.0 / max(image.size)))
         if scale > 1.0:
             bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -249,7 +248,12 @@ class DocumentExtractor:
         adaptive = cv2.adaptiveThreshold(
             clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
         )
-        variants = [bgr, cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR), cv2.cvtColor(adaptive, cv2.COLOR_GRAY2BGR)]
+        variants = [
+            bgr,
+            cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(adaptive, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(cv2.bitwise_not(adaptive), cv2.COLOR_GRAY2BGR),
+        ]
 
         candidates = []
         raw_lines = []
@@ -298,6 +302,17 @@ class DocumentExtractor:
                             row["cy"] = sum(part["cy"] for part in row["items"]) / len(row["items"])
                     for row in rows:
                         parts = sorted(row["items"], key=lambda box: box["x0"])
+                        # Keep a whole-row reading candidate as well: some OCR
+                        # detectors return each LCD digit (or digit pair) as a
+                        # separate box with a gap too large for the tighter
+                        # sequence splitter below.
+                        row_value = "".join(item["digits"] for item in parts)
+                        row_confidence = sum(item["score"] for item in parts) / len(parts)
+                        candidate = self._numeric_reading_candidate(row_value, row_confidence, "RapidOCR-row")
+                        if candidate:
+                            candidate["variant"] = variant_index
+                            candidates.append(candidate)
+
                         sequences = []
                         current = []
                         for item in parts:
@@ -322,10 +337,11 @@ class DocumentExtractor:
         # Tesseract remains a second, independent recognizer. Use line-mode on
         # the enhanced and adaptive images instead of page-mode on the whole photo.
         if self.tesseract_available:
-            tesseract_images = [Image.fromarray(cv2.cvtColor(variants[1], cv2.COLOR_BGR2RGB)),
-                                Image.fromarray(cv2.cvtColor(adaptive, cv2.COLOR_GRAY2RGB))]
+            tesseract_images = [Image.fromarray(cv2.cvtColor(variant, cv2.COLOR_BGR2RGB)) for variant in variants]
             for variant_index, variant in enumerate(tesseract_images):
-                for psm in (7, 13):
+                # PSM 6/11 handle displays where the odometer sits in a larger
+                # dashboard photo; 7/13 handle tightly framed single-line digits.
+                for psm in (6, 7, 11, 13):
                     config = f"--oem 3 --psm {psm} -c tessedit_char_whitelist=0123456789.,"
                     try:
                         data = pytesseract.image_to_data(variant, lang="eng", config=config, output_type=pytesseract.Output.DICT)
