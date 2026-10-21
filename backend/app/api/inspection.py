@@ -465,9 +465,10 @@ async def verify_fields(inspection_id: str, user_fields: dict):
             # Remove special characters and extra spaces for comparison
             import re
             
-            # Ignore formatting punctuation while keeping the full value intact.
-            normalized_field = re.sub(r'[^a-z0-9]', '', field_value_str)
-            normalized_text = re.sub(r'[^a-z0-9]', '', all_extracted_text_lower)
+            # Preserve word boundaries so a short value cannot match inside a
+            # different word/number (for example, "oil" in "boil" or 123 in 91234).
+            normalized_field = re.sub(r'[^a-z0-9]+', ' ', field_value_str).strip()
+            normalized_text = re.sub(r'[^a-z0-9]+', ' ', all_extracted_text_lower)
             
             if "odometer" in field_name.lower():
                 # Only accept an exact, complete OCR reading from this image.
@@ -475,17 +476,21 @@ async def verify_fields(inspection_id: str, user_fields: dict):
                 text_readings = {re.sub(r'\D', '', str(item.get("value", ""))) for item in odometer_candidates}
                 found = bool(expected_reading) and expected_reading in text_readings
             else:
-                # Try exact match first, then match without punctuation/spacing.
-                found = field_value_str in all_extracted_text_lower
-                if not found and len(normalized_field) > 3:
-                    found = normalized_field in normalized_text
+                # Match a complete normalized phrase, not an arbitrary substring.
+                found = bool(normalized_field) and re.search(
+                    rf'(?<![a-z0-9]){re.escape(normalized_field)}(?![a-z0-9])',
+                    normalized_text,
+                ) is not None
             
             # Numeric fields must match a complete numeric token; substring
             # matches can incorrectly accept values such as 15 inside 2015.
-            if not found and "odometer" not in field_name.lower() and any(num_field in field_name.lower() for num_field in ['year', 'cc', 'bhp', 'mileage']):
+            if not found and "odometer" not in field_name.lower() and any(num_field in field_name.lower() for num_field in ['year', 'cc', 'bhp', 'mileage', 'cost']):
                 field_numbers = re.findall(r'\d+', field_value_str)
                 if field_numbers:
-                    text_numbers = re.findall(r'\d+', all_extracted_text_lower)
+                    # Compare complete numeric values. Remove common thousands
+                    # separators first so 45,000 can match an entered 45000.
+                    numeric_text = re.sub(r'(?<=\d)[,.](?=\d)', '', all_extracted_text_lower)
+                    text_numbers = re.findall(r'\d+', numeric_text)
                     found = all(number in text_numbers for number in field_numbers)
             
             logger.info(f"Field {field_name} = '{field_value}': {'FOUND' if found else 'NOT FOUND'}")

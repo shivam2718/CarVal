@@ -164,12 +164,12 @@ export default function Home() {
                   </div>
                 </div>
 
-                <button 
-                  disabled
-                  className="w-full rounded-xl bg-purple-600/20 px-8 py-4 font-bold text-purple-300/50 cursor-not-allowed border border-purple-500/20"
+                <a
+                  href="/inspection/analyze"
+                  className="block w-full rounded-xl border border-purple-400/40 bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 text-center font-bold text-white transition-all hover:from-purple-500 hover:to-pink-500"
                 >
-                  Coming in Next Phase
-                </button>
+                  Start Vision Analysis
+                </a>
               </div>
             </div>
           </div>

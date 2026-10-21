@@ -116,6 +116,7 @@ export default function InspectionPage() {
         fields[`service_${index}_date`] = record.date
         fields[`service_${index}_mileage_km`] = record.mileage_km
         fields[`service_${index}_work_done`] = record.work_done
+        fields[`service_${index}_cost`] = record.cost
       })
       
       files = serviceFiles
