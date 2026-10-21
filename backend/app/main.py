@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import routers
-from app.api import health, inspection, diagnostics
+from app.api import health, inspection, vision, documents, obd, valuation
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -28,7 +28,10 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(inspection.router)
-app.include_router(diagnostics.router)
+app.include_router(vision.router)
+app.include_router(documents.router)
+app.include_router(obd.router)
+app.include_router(valuation.router)
 
 
 @app.get("/")

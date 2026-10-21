@@ -43,9 +43,10 @@ export interface InspectionResult {
   documents: any | null      // rc / insurance / service / service_history
   pipeline_status: Record<string, boolean>
   engine_assessment?: EngineAssessment
+  valuation?: { status: string; message?: string }
 }
 
-export type DocType = 'rc' | 'insurance' | 'service'
+export type DocType = 'rc' | 'insurance' | 'service' | 'odometer'
 
 
 // ---- OBD-II diagnostic photo feature (all optional so old responses still work) ----

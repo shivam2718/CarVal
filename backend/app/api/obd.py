@@ -1,12 +1,11 @@
 """
-Diagnostic (OBD-II scanner photo) endpoints
-Lives next to the inspection routes and shares the same in-memory store.
+OBD-II module (scanner-screen photos)
 
-POST /inspection/{id}/diagnostics/photos                    upload scanner-screen photo(s)
-POST /inspection/{id}/diagnostics/extract/{evidence_id}     run OCR -> proposals (needs user review)
-POST /inspection/{id}/diagnostics/confirm/{evidence_id}     save what the USER confirmed
-GET  /inspection/{id}/diagnostics                           engine_assessment for this inspection
-GET  /inspection/{id}/diagnostics/photos/{evidence_id}      the stored photo (for the review screen)
+POST /inspection/{id}/obd/photos                    upload scanner-screen photo(s)
+POST /inspection/{id}/obd/extract/{evidence_id}     run OCR -> proposals (needs user review)
+POST /inspection/{id}/obd/confirm/{evidence_id}     save what the USER confirmed
+GET  /inspection/{id}/obd                           engine_assessment for this inspection
+GET  /inspection/{id}/obd/photos/{evidence_id}      the stored photo (for the review screen)
 
 Diagnostic photos are stored in inspection["diagnostics"], NOT in inspection["images"],
 so they can never be sent to the damage-detection (YOLO) pipeline by accident.
@@ -23,7 +22,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from PIL import Image
 
-from app.api.inspection import inspections_db
+from app.core.store import inspections_db
 from app.core.config import settings
 from app.schemas.diagnostics import DiagnosticConfirmRequest
 from app.services.diagnostic_assessment import build_engine_assessment, public_evidence
@@ -32,7 +31,7 @@ from app.services.dtc_catalog import lookup_code
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/inspection", tags=["diagnostics"])
+router = APIRouter(prefix="/inspection", tags=["obd"])
 
 IMAGE_EXTS = (".jpg", ".jpeg", ".png")
 DTC_STRICT_FULL = re.compile(r"^[PBCU][0-3][0-9A-F]{3}$")
@@ -51,7 +50,7 @@ def _get_evidence(inspection: dict, evidence_id: str) -> dict:
     raise HTTPException(status_code=404, detail="Diagnostic evidence not found")
 
 
-@router.post("/{inspection_id}/diagnostics/photos")
+@router.post("/{inspection_id}/obd/photos")
 async def upload_diagnostic_photos(inspection_id: str, files: List[UploadFile] = File(...)):
     inspection = _get_inspection(inspection_id)
     max_bytes = settings.MAX_IMAGE_SIZE_MB * 1024 * 1024
@@ -100,7 +99,7 @@ async def upload_diagnostic_photos(inspection_id: str, files: List[UploadFile] =
 
 
 # Plain `def` (not async): OCR is CPU work, FastAPI runs it in a worker thread so the server stays responsive.
-@router.post("/{inspection_id}/diagnostics/extract/{evidence_id}")
+@router.post("/{inspection_id}/obd/extract/{evidence_id}")
 def extract_diagnostic(inspection_id: str, evidence_id: str):
     inspection = _get_inspection(inspection_id)
     ev = _get_evidence(inspection, evidence_id)
@@ -135,7 +134,7 @@ def extract_diagnostic(inspection_id: str, evidence_id: str):
     return {"evidence": public_evidence(ev), "review_required": True, "manual_entry_required": False}
 
 
-@router.post("/{inspection_id}/diagnostics/confirm/{evidence_id}")
+@router.post("/{inspection_id}/obd/confirm/{evidence_id}")
 def confirm_diagnostic(inspection_id: str, evidence_id: str, body: DiagnosticConfirmRequest):
     inspection = _get_inspection(inspection_id)
     ev = _get_evidence(inspection, evidence_id)
@@ -178,12 +177,12 @@ def confirm_diagnostic(inspection_id: str, evidence_id: str, body: DiagnosticCon
     return {"evidence": public_evidence(ev), "engine_assessment": build_engine_assessment(inspection)}
 
 
-@router.get("/{inspection_id}/diagnostics")
+@router.get("/{inspection_id}/obd")
 def get_diagnostics(inspection_id: str):
     return build_engine_assessment(_get_inspection(inspection_id))
 
 
-@router.get("/{inspection_id}/diagnostics/photos/{evidence_id}")
+@router.get("/{inspection_id}/obd/photos/{evidence_id}")
 def get_diagnostic_photo(inspection_id: str, evidence_id: str):
     ev = _get_evidence(_get_inspection(inspection_id), evidence_id)
     return Response(content=ev["contents"], media_type=ev.get("content_type") or "image/jpeg")

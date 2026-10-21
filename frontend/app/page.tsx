@@ -115,7 +115,7 @@ export default function Home() {
                 </div>
 
                 <a
-                  href="/inspection/analyze"
+                  href="/inspection"
                   className="w-full group/btn relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 p-0.5"
                 >
                   <div className="relative rounded-xl bg-black px-8 py-4 flex items-center justify-center space-x-2 group-hover/btn:bg-black/50 transition-all duration-300">
@@ -189,7 +189,8 @@ export default function Home() {
                   <ul className="space-y-1 text-xs text-gray-500">
                     <li>✓ Document AI</li>
                     <li>✓ OCR Engine</li>
-                    <li>○ Vision API</li>
+                    <li>✓ Vision API</li>
+                    <li>✓ OBD-II scanner photos</li>
                   </ul>
                 </div>
               </div>

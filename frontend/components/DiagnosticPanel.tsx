@@ -167,14 +167,14 @@ function EvidenceCard({ inspectionId, ev, onChanged }: { inspectionId: string; e
   )
 }
 
-export default function DiagnosticPanel({ inspectionId }: { inspectionId: string }) {
+export default function DiagnosticPanel({ inspectionId, onChanged }: { inspectionId: string; onChanged?: () => void }) {
   const [assessment, setAssessment] = useState<EngineAssessment | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    try { setAssessment(await getDiagnostics(inspectionId)) } catch (e) { setError(errMsg(e)) }
-  }, [inspectionId])
+    try { setAssessment(await getDiagnostics(inspectionId)); onChanged?.() } catch (e) { setError(errMsg(e)) }
+  }, [inspectionId, onChanged])
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -193,8 +193,7 @@ export default function DiagnosticPanel({ inspectionId }: { inspectionId: string
     <section className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-3xl font-bold text-white">🔧 Engine Diagnostics (scanner photo)</h2>
-          <p className="text-gray-400 text-sm">Photograph a scanner screen that already shows the codes. CarVal reads it; you confirm it. No adapter needed.</p>
+          <p className="text-gray-400 text-sm">No OBD adapter needed: add a photo of the scanner screen, then check the codes it read.</p>
         </div>
         <label className="px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-cyan-300 text-sm cursor-pointer hover:bg-gray-700">
           {busy ? 'Uploading…' : '+ Add scanner photo'}

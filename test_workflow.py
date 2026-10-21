@@ -62,7 +62,7 @@ def test_workflow():
     
     try:
         resp = requests.post(
-            f"{API_URL}/inspection/{inspection_id}/verify-fields",
+            f"{API_URL}/inspection/{inspection_id}/documents/verify",
             json=rc_fields
         )
         resp.raise_for_status()

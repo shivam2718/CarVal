@@ -61,7 +61,7 @@ def new_inspection() -> str:
 
 def upload(iid, data=None, name="scan.jpg", mime="image/jpeg"):
     data = data or scanner_image(["P0100"])
-    return client.post(f"/inspection/{iid}/diagnostics/photos", files=[("files", (name, data, mime))])
+    return client.post(f"/inspection/{iid}/obd/photos", files=[("files", (name, data, mime))])
 
 
 def fake_ocr(codes=(), suggestions=(), readings=(), context="unknown"):
@@ -98,7 +98,7 @@ def test_upload_rejects_bad_files_and_unknown_inspection():
     assert upload(iid, b"hello", "notes.txt", "text/plain").status_code == 400
     assert upload(iid, b"not really an image", "fake.jpg").status_code == 400
     assert upload("INS-DOESNOTEXIST").status_code == 404
-    assert client.get("/inspection/NOPE/diagnostics").status_code == 404
+    assert client.get("/inspection/NOPE/obd").status_code == 404
 
 
 # ---------------------------------------------------------------- catalogue / title matching (no OCR needed)
@@ -133,7 +133,7 @@ def test_real_ocr_reads_dark_freeze_frame_screen():
     iid = new_inspection()
     data = scanner_image(["View Freeze Frame", "P0100", "FUELSYS1  OL", "LOAD_PCT (%)  55.7", "ECT (°F)  159"])
     eid = upload(iid, data).json()["evidence"][0]["evidence_id"]
-    ev = client.post(f"/inspection/{iid}/diagnostics/extract/{eid}").json()["evidence"]
+    ev = client.post(f"/inspection/{iid}/obd/extract/{eid}").json()["evidence"]
     assert ev["ocr_status"] == "needs_user_confirmation"
     assert "P0100" in [c["code"] for c in ev["extracted_codes"]]
     assert ev["scan_context"] == "freeze_frame"
@@ -145,25 +145,25 @@ def test_real_ocr_reads_dark_freeze_frame_screen():
 def test_real_ocr_reads_light_screen_with_two_codes():
     iid = new_inspection()
     eid = upload(iid, scanner_image(["Stored Codes", "P0301", "P0420"], dark=False), "s.png", "image/png").json()["evidence"][0]["evidence_id"]
-    ev = client.post(f"/inspection/{iid}/diagnostics/extract/{eid}").json()["evidence"]
+    ev = client.post(f"/inspection/{iid}/obd/extract/{eid}").json()["evidence"]
     assert {"P0301", "P0420"} <= {c["code"] for c in ev["extracted_codes"]}
 
 
 # ---------------------------------------------------------------- full workflow (OCR faked, so it runs anywhere)
 def test_full_flow_create_upload_extract_confirm_get(monkeypatch):
-    monkeypatch.setattr("app.api.diagnostics.extract_diagnostic_text", fake_ocr(codes=["P0303"]))
+    monkeypatch.setattr("app.api.obd.extract_diagnostic_text", fake_ocr(codes=["P0303"]))
     iid = new_inspection()
     eid = upload(iid).json()["evidence"][0]["evidence_id"]
 
     # before confirmation: flagged as unverified, no code finding yet
-    client.post(f"/inspection/{iid}/diagnostics/extract/{eid}")
+    client.post(f"/inspection/{iid}/obd/extract/{eid}")
     ea = client.get(f"/inspection/{iid}").json()["engine_assessment"]
     assert ea["status"] == "awaiting_confirmation"
     assert [f["flag"] for f in ea["risk_flags"]] == ["diagnostic_evidence_unverified"]
 
     body = {"codes": [{"code": "p0303", "scanner_status": "stored"}], "readings": [], "scan_context": "unknown",
             "no_codes_visible": False, "notes": ["page 1/2"]}
-    r = client.post(f"/inspection/{iid}/diagnostics/confirm/{eid}", json=body)
+    r = client.post(f"/inspection/{iid}/obd/confirm/{eid}", json=body)
     assert r.status_code == 200
     code = r.json()["evidence"]["extracted_codes"][0]
     assert (code["code"], code["entry_source"], code["user_confirmed"]) == ("P0303", "ocr_confirmed", True)
@@ -178,14 +178,14 @@ def test_full_flow_create_upload_extract_confirm_get(monkeypatch):
     assert full["pipeline_status"]["diagnostics_confirmed"] is True
 
     # confirmed evidence cannot be re-extracted
-    assert client.post(f"/inspection/{iid}/diagnostics/extract/{eid}").status_code == 409
+    assert client.post(f"/inspection/{iid}/obd/extract/{eid}").status_code == 409
 
 
 def test_confirm_validation_and_no_code_screen(monkeypatch):
-    monkeypatch.setattr("app.api.diagnostics.extract_diagnostic_text", fake_ocr())
+    monkeypatch.setattr("app.api.obd.extract_diagnostic_text", fake_ocr())
     iid = new_inspection()
     eid = upload(iid).json()["evidence"][0]["evidence_id"]
-    url = f"/inspection/{iid}/diagnostics/confirm/{eid}"
+    url = f"/inspection/{iid}/obd/confirm/{eid}"
 
     assert client.post(url, json={"codes": [{"code": "P9999"}]}).status_code == 422     # invalid DTC shape
     assert client.post(url, json={"codes": []}).status_code == 422                      # nothing confirmed
@@ -201,14 +201,14 @@ def test_confirm_validation_and_no_code_screen(monkeypatch):
 def test_ocr_failure_is_recoverable_with_manual_entry(monkeypatch):
     def boom(_bytes):
         raise DiagnosticOCRError("Tesseract OCR is not installed")
-    monkeypatch.setattr("app.api.diagnostics.extract_diagnostic_text", boom)
+    monkeypatch.setattr("app.api.obd.extract_diagnostic_text", boom)
     iid = new_inspection()
     eid = upload(iid).json()["evidence"][0]["evidence_id"]
 
-    r = client.post(f"/inspection/{iid}/diagnostics/extract/{eid}").json()
+    r = client.post(f"/inspection/{iid}/obd/extract/{eid}").json()
     assert r["evidence"]["ocr_status"] == "ocr_failed" and r["manual_entry_required"] is True
 
-    ok = client.post(f"/inspection/{iid}/diagnostics/confirm/{eid}",
+    ok = client.post(f"/inspection/{iid}/obd/confirm/{eid}",
                      json={"codes": [{"code": "P0420"}], "scan_context": "unknown"})
     assert ok.status_code == 200
     assert ok.json()["evidence"]["extracted_codes"][0]["entry_source"] == "user_added"

@@ -1,5 +1,12 @@
 # CarVal API Contract
 
+> **Module layout (current).** Each module has its own route group under `/inspection/{id}`:
+> `/vision/images`, `/vision/analyze`, `/vision/images/{image_id}[/annotated]` ·
+> `/documents` (form fields `files`, `doc_type` = rc|insurance|service|odometer, optional `replace`), `/documents/extract`, `/documents/verify` ·
+> `/obd/photos`, `/obd/extract/{evidence_id}`, `/obd/confirm/{evidence_id}`, `/obd` ·
+> `/valuation` (stub, Review 3). `POST /inspection` and `GET /inspection/{id}` stay at the top level.
+> The older flat paths below (`/images`, `/vision`, `/diagnostics/...`, `/verify-fields`) were replaced by these.
+
 Reference for backend, frontend, and member services. **All changes to this contract must be discussed with the team.**
 
 ## Base URL

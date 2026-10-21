@@ -171,6 +171,12 @@ class DocumentExtractor:
             # Extract text
             text = pytesseract.image_to_string(image, config=config)
             
+            if avg_confidence < 0.6:
+                rapid_text, rapid_conf = self._rapid_ocr_text(image)
+                if rapid_text and rapid_conf > avg_confidence:
+                    print(f"[OCR] Tesseract confidence {avg_confidence:.2f} < RapidOCR {rapid_conf:.2f}; using RapidOCR")
+                    text, avg_confidence = rapid_text, rapid_conf
+            
             print(f"[OCR] Extracted text length: {len(text)}")
             print(f"[OCR] Average OCR confidence: {avg_confidence:.2f}")
             print(f"[OCR] Languages: {languages}")
@@ -183,6 +189,22 @@ class DocumentExtractor:
             if 'hin' in languages and languages != 'eng':
                 print(f"[OCR] Retrying with English only...")
                 return self.extract_text_from_image(image_path, languages='eng', preprocess=preprocess)
+            return "", 0.0
+
+    def _rapid_ocr_text(self, image) -> tuple:
+        """Line-by-line text + mean score from RapidOCR (better than Tesseract on photographed cards)."""
+        engine = self._get_rapid_ocr()
+        if engine is None:
+            return "", 0.0
+        try:
+            import numpy as np
+            result = engine(np.array(image.convert("RGB")))
+            if not result.txts:
+                return "", 0.0
+            scores = [float(x) for x in result.scores]
+            return "\n".join(result.txts), sum(scores) / len(scores)
+        except Exception as exc:
+            print(f"[OCR] RapidOCR fallback failed: {exc}")
             return "", 0.0
 
     def _get_rapid_ocr(self):
@@ -378,6 +400,7 @@ class DocumentExtractor:
         fields = {
             "registration_number": None,
             "owner": None,
+            "make": None,
             "model": None,
             "manufacturing_year": None,
             "registration_year": None,
@@ -592,11 +615,64 @@ class DocumentExtractor:
                     field_confidence["owner"] = 0.80 * ocr_confidence
                     break
         
+        # ========== LABELLED FIELDS (take priority over the guesses above) ==========
+        def labelled(*labels):
+            """Value printed after a label: same line after ':' or spaces, else the next non-empty line."""
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            for i, line in enumerate(lines):
+                for label in labels:
+                    m = re.match(label + r'\s*[:\-]?\s*(.*)$', line, re.IGNORECASE)
+                    if m:
+                        value = m.group(1).strip()
+                        if value:
+                            return value
+                        if i + 1 < len(lines):
+                            return lines[i + 1]
+            return None
+
+        def set_field(name, value, base):
+            if value not in (None, ""):
+                fields[name] = value
+                field_confidence[name] = base * (ocr_confidence or 0.0)
+
+        reg_raw = labelled(r"Regn?\.?\s*No\.?", r"Registration\s*(?:No|Number)\.?")
+        if reg_raw:
+            m = re.match(r'^([A-Z]{2})\s*-?\s*(\d{1,2})\s*-?\s*([A-Z]{1,3})\s*-?\s*(\d{4})$', reg_raw.upper())
+            if m:
+                set_field("registration_number", "-".join(m.groups()), 0.95)
+        chassis = labelled(r"Chassis\s*No\.?", r"VIN")
+        if chassis:
+            chassis = re.sub(r'[^A-Za-z0-9]', '', chassis).upper()
+            if 10 <= len(chassis) <= 20:  # Indian two-wheeler chassis numbers are often not 17 characters
+                set_field("vin", chassis, 0.90 if len(chassis) == 17 else 0.75)
+        set_field("owner", labelled(r"Owner'?s?\s*Name", r"Name\s*of\s*(?:the\s*)?(?:Owner|Registered\s*Owner)"), 0.90)
+        set_field("make", labelled(r"Maker'?s?\s*Name", r"Make"), 0.90)
+        set_field("model", labelled(r"Maker'?s?\s*Classification", r"Model"), 0.90)
+        mfg = labelled(r"Month\s*&?\s*Year\s*of\s*(?:Mfg|Manufacture)", r"Year\s*of\s*(?:Mfg|Manufacture)")
+        if mfg and re.search(r'(19|20)\d{2}', mfg):
+            set_field("manufacturing_year", int(re.search(r'(19|20)\d{2}', mfg).group(0)), 0.90)
+        reg_date = labelled(r"Date\s*of\s*Regi?stration", r"Regn?\.?\s*Date")
+        if reg_date and re.search(r'(19|20)\d{2}', reg_date):
+            set_field("registration_year", int(re.search(r'(19|20)\d{2}', reg_date).group(0)), 0.90)
+        fuel = labelled(r"Fuel(?:\s*Used)?")
+        if fuel:
+            for ft in ("petrol", "diesel", "cng", "lpg", "electric", "hybrid"):
+                if ft in fuel.lower():
+                    set_field("fuel_type", ft, 0.92)
+        cc = labelled(r"Cubic\s*Capacity", r"Engine\s*(?:Capacity|CC)")
+        if cc:
+            m = re.search(r'\d{2,4}(?:\.\d+)?', cc)
+            if m and 30 <= float(m.group(0)) <= 7000:
+                value = float(m.group(0))
+                set_field("engine_displacement_cc", int(value) if value == int(value) else value, 0.92)
+
         return {
             **fields,
             "extracted_fields": fields,
             "field_confidence": field_confidence,
-            "overall_confidence": sum(field_confidence.values()) / len(field_confidence) if field_confidence else 0.0
+            "overall_confidence": (
+                sum(v for v in field_confidence.values() if v > 0) / max(1, sum(1 for v in field_confidence.values() if v > 0))
+            )
         }
     
     def extract_insurance_info(self, text: str) -> Dict[str, Any]:
@@ -608,6 +684,9 @@ class DocumentExtractor:
             "valid_from": None,
             "valid_until": None,
             "insurer_name": None,
+            "insured_name": None,
+            "registration_number": None,
+            "idv": None,
             "claims": []
         }
         
@@ -617,24 +696,57 @@ class DocumentExtractor:
         if policy_match:
             fields["policy_number"] = policy_match.group(1).strip()
         
-        # Valid dates (DD-MM-YYYY or YYYY-MM-DD)
-        date_pattern = r'(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})'
-        date_matches = re.findall(date_pattern, text)
-        if len(date_matches) >= 1:
+        # Validity dates (DD-MM-YYYY or YYYY-MM-DD): prefer labelled ones, else first two dates in the text
+        date_re = r'(\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4})'
+        from_m = re.search(r'(?:valid\s*from|period\s*from|start(?:s)?(?:\s*date)?|from)\s*[:\-]?\s*' + date_re, text, re.IGNORECASE)
+        until_m = re.search(r'(?:valid\s*(?:until|upto|up\s*to|till|to)|expir\w*(?:\s*date)?|end(?:s)?(?:\s*date)?|to)\s*[:\-]?\s*' + date_re, text, re.IGNORECASE)
+        date_matches = re.findall(date_re, text)
+        if from_m:
+            fields["valid_from"] = from_m.group(1)
+        elif len(date_matches) >= 1:
             fields["valid_from"] = date_matches[0]
-        if len(date_matches) >= 2:
+        if until_m:
+            fields["valid_until"] = until_m.group(1)
+        elif len(date_matches) >= 2:
             fields["valid_until"] = date_matches[1]
         
+        # Insurer from the letterhead ("ORCHARD MUTUAL" / "General Insurance Company Limited"), else a known-name list below
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        for i, line in enumerate(lines[:8]):
+            if re.search(r'insurance|assurance', line, re.IGNORECASE) and not re.search(r'certificate|policy|schedule|motor vehicles', line, re.IGNORECASE):
+                if i > 0 and re.match(r'^(general\s+|life\s+)?(insurance|assurance)\s+company', line, re.IGNORECASE):
+                    fields["insurer_name"] = f"{lines[i - 1].title()} {line}"
+                else:
+                    fields["insurer_name"] = line.title()
+                break
+
+        def labelled_value(*labels):
+            for i, line in enumerate(lines):
+                for label in labels:
+                    m = re.match(label + r'\s*[:\-]?\s*(.*)$', line, re.IGNORECASE)
+                    if m:
+                        if m.group(1).strip():
+                            return m.group(1).strip()
+                        if i + 1 < len(lines):
+                            return lines[i + 1]
+            return None
+
+        fields["insured_name"] = labelled_value(r"Name\s*of\s*the\s*Insured", r"Insured\s*Name")
+        fields["registration_number"] = labelled_value(r"Registration\s*Number", r"Regn?\.?\s*No\.?")
+        idv = labelled_value(r"Insured\s*Declared\s*Value(?:\s*\(IDV\))?", r"IDV")
+        idv_m = re.search(r'\d[\d,]*(?:\.\d+)?', idv or "")
+        fields["idv"] = int(float(idv_m.group(0).replace(',', ''))) if idv_m else None
+
         # Insurer names
         insurers = ['bajaj', 'hdfc', 'icici', 'tata', 'reliance', 'iffco', 
                    'national', 'united', 'oriental', 'edelweiss']
-        for insurer in insurers:
+        for insurer in ([] if fields["insurer_name"] else insurers):
             if insurer.lower() in text.lower():
                 fields["insurer_name"] = insurer.title()
                 break
         
         # Claims (look for claim amount patterns)
-        claim_pattern = r'claim[:\s]+₹?(\d+(?:,\d+)*)'
+        claim_pattern = r'claim(?:\s*amount)?[:\s]+(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*)'
         claim_matches = re.findall(claim_pattern, text, re.IGNORECASE)
         if claim_matches:
             for amount_str in claim_matches:
@@ -714,7 +826,7 @@ class DocumentExtractor:
         for pattern in service_center_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                service_center = match.group(1).strip()
+                service_center = re.sub(r'^service\s*(?:center|centre)\s*[:\-]?\s*', '', match.group(1).strip(), flags=re.IGNORECASE)
                 break
         
         # Cost pattern (e.g., ₹2500 or Rs. 2500 or Total Cost: 1400)
@@ -948,10 +1060,12 @@ async def extract_document(file: UploadFile = File(...), document_type: str = "r
         
         elif document_type.lower() == "insurance":
             fields = extractor.extract_insurance_info(extracted_text)
-            confidence = 0.88
+            key_fields = ("policy_number", "valid_from", "valid_until", "insurer_name")
+            found_share = sum(1 for k in key_fields if fields.get(k)) / len(key_fields)
+            confidence = round(found_share * (ocr_confidence or 0.0), 2)
             response = {
                 "document_type": "insurance",
-                "extracted": True,
+                "extracted": found_share > 0,
                 "confidence": confidence,
                 "fields": fields,
                 "raw_text": extracted_text,  # Always include raw text for debugging
@@ -960,10 +1074,10 @@ async def extract_document(file: UploadFile = File(...), document_type: str = "r
         
         elif document_type.lower() == "service_bill":
             fields = extractor.extract_service_history(extracted_text)
-            confidence = 0.85
+            confidence = round(ocr_confidence or 0.0, 2) if fields else 0.0
             response = {
                 "document_type": "service_bill",
-                "extracted": True,
+                "extracted": len(fields) > 0,
                 "confidence": confidence,
                 "fields": {
                     "service_records": fields,
